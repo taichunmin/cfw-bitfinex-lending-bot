@@ -19,6 +19,8 @@ For all limits and quotas, retrieve from the product's `/platform/limits/` page.
 
 Run `wrangler types` after changing bindings in wrangler.jsonc.
 
+`wrangler types` 也會把 `.env` 的變數寫進 `worker-configuration.d.ts` 的 `Env`。新增 `.env` 變數時要同步把 key 加進 `.env.example`（值留空），否則 CI 沒有 `.env`（CI 是 `cp .env.example .env`）會產出不同的型別，讓 `wrangler types --check` 失敗。
+
 ## Node.js Compatibility
 
 https://developers.cloudflare.com/workers/runtime-apis/nodejs/
