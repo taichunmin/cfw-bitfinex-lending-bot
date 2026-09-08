@@ -1,16 +1,36 @@
 {
-	"name": "cfw-bitfinex-lending-bot",
-	"version": "0.0.0",
-	"private": true,
-	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev --test-scheduled",
-		"start": "wrangler dev --test-scheduled",
-		"cf-typegen": "wrangler types"
-	},
-	"devDependencies": {
-		"@types/node": "^26.4.1",
-		"typescript": "^5.5.2",
-		"wrangler": "^4.129.0"
-	}
+  "name": "cfw-bitfinex-lending-bot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cf-typegen": "wrangler types",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --test-scheduled",
+    "start": "wrangler dev --test-scheduled",
+    "test": "vitest",
+    "type-check": "yarn cf-typegen && tsc"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.4",
+    "@tsconfig/node-lts": "^24.0.1",
+    "@types/lodash": "^4.17.25",
+    "@types/node": "^26.4.1",
+    "typescript": "^5.5.2",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.129.0"
+  },
+  "dependencies": {
+    "@taichunmin/bitfinex": "^0.0.15",
+    "axios": "^1.20.0",
+    "dayjs": "^1.11.23",
+    "dotenv": "^17.4.2",
+    "js-yaml": "^5.4.1",
+    "json5": "^2.2.3",
+    "lodash": "^4.18.1",
+    "papaparse": "^5.7.0",
+    "pino": "^10.3.1",
+    "technicalindicators": "^3.1.0",
+    "zod": "^4.5.4"
+  }
 }
