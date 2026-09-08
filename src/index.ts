@@ -1,25 +1,38 @@
 /**
  * Bitfinex 融資（放貸）自動化機器人的 Cloudflare Worker 進入點。
  *
- * cron 排程定義在 wrangler.jsonc 的 `triggers.crons`，見下方的 CRON_* 常數：
- * 每 3 分鐘執行 funding-auto-renew-3（重新計算並調整自動出借的利率與天數）。
+ * cron 排程定義在 wrangler.jsonc 的 `triggers.crons`，scheduled handler 依 `controller.cron` 分派。
  *
- * 本機測試：
- * - `yarn dev` 啟動開發伺服器（已帶 `--test-scheduled`）
- * - `curl "http://localhost:8787/"` 會印出可直接複製的 __scheduled 測試指令
+ * 本機測試：`yarn dev` 之後開 http://localhost:8787/ ，會印出可直接複製的 __scheduled 測試指令。
  */
 
+import JSON5 from 'json5'
+import wranglerJsonc from '../wrangler.jsonc'
 import { main as fundingAutoRenew3 } from './funding/auto-renew-3'
-import { createLoggers } from './lib/logger'
+import { logger as rootLogger } from './lib/logger'
 
-const loggers = createLoggers('index')
+const logger = rootLogger.child({ namespace: 'index' })
+/** 直接讀 wrangler.jsonc，排程改了測試頁面就跟著改，不必兩邊同步 */
+const CRONS = JSON5.parse<{ triggers?: { crons?: string[] } }>(wranglerJsonc).triggers?.crons ?? []
+
+function escapeHtml (str: string): string {
+  return str.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`)
+}
 
 export default {
   async fetch (req) {
     const url = new URL(req.url)
     url.pathname = '/__scheduled'
-    url.searchParams.set('cron', '*/5 * * * *')
-    return new Response(`To test the scheduled handler, ensure you have used the "--test-scheduled" then try running "curl ${url.href}".`)
+    const body = CRONS.length === 0
+      ? '<p>wrangler.jsonc 的 <code>triggers.crons</code> 是空的，沒有排程可以測試。</p>'
+      : [
+          '<p>To test the scheduled handler, ensure you have used the <code>--test-scheduled</code> flag, then run:</p>',
+          ...CRONS.map(cron => {
+            url.searchParams.set('cron', cron)
+            return `<pre>curl "${escapeHtml(url.href)}"</pre>`
+          }),
+        ].join('\n')
+    return new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } })
   },
 
   // The scheduled handler is invoked at the interval set in our wrangler.jsonc's
@@ -32,16 +45,16 @@ export default {
     try {
       switch (controller.cron) {
         case '*/5 * * * *':
-          await fundingAutoRenew3(env)
+          await fundingAutoRenew3(controller, env, ctx)
           break
 
         case '*/30 * * * *':
           break
       }
-      loggers.log(`cron ${JSON.stringify(controller.cron)} processed`)
+      logger.info({ cron: controller.cron }, 'cron processed')
     } catch (err) {
       // 先把錯誤細節（含 data、cause）寫進 log 再往外丟，讓這次 cron 在 dashboard 標記為失敗
-      loggers.error([err])
+      logger.error({ err, cron: controller.cron }, 'cron failed')
       throw err
     }
   },
