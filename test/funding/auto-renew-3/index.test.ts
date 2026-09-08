@@ -2,6 +2,7 @@ import _ from 'lodash'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { ZodConfig, ZodDb, calcTargetRate, main, rateToPeriod } from '../../../src/funding/auto-renew-3'
+import { dateStringify } from '../../../src/lib/helper'
 import { Telegram } from '../../../src/lib/telegram'
 
 /** 與 src/funding/auto-renew-3/index.ts 的 DB_KEY 相同，改動會讓既有的狀態對不上 */
@@ -220,6 +221,16 @@ describe('main()', () => {
 
   const telegram = { editMessageText: vi.fn(), sendMessage: vi.fn() }
 
+  const SCHEDULED_TIME = new Date('2025-09-07T00:05:00Z').getTime()
+
+  function createController (overrides: Record<string, any> = {}): ScheduledController {
+    return { cron: '*/5 * * * *', scheduledTime: SCHEDULED_TIME, noRetry: () => {}, ...overrides }
+  }
+
+  function createCtx (): ExecutionContext {
+    return { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext
+  }
+
   function createEnv (overrides: Record<string, any> = {}): Env {
     return {
       BITFINEX_API_KEY: 'api-key',
@@ -260,22 +271,39 @@ describe('main()', () => {
 
   afterEach(() => { vi.restoreAllMocks() })
 
+  test('傳入 controller 時，每則 log 都帶著 reqId 與 scheduledTime', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    await main(createController(), createEnv(), createCtx())
+
+    expect(infoSpy.mock.calls.length).toBeGreaterThan(0)
+    for (const [logged] of infoSpy.mock.calls) {
+      expect(logged).toMatchObject({
+        namespace: 'funding-auto-renew-3',
+        reqId: expect.any(String),
+        scheduledTime: dateStringify(SCHEDULED_TIME),
+      })
+    }
+    // 同一次執行的所有 log 共用同一個 reqId
+    const reqIds = new Set(infoSpy.mock.calls.map(([logged]: any) => logged.reqId))
+    expect(reqIds.size).toBe(1)
+  })
+
   test('平台維護中時直接結束，不做任何 API 呼叫', async () => {
     mocks.v2PlatformStatus.mockResolvedValue({ status: 0 })
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
     expect(mocks.v2AuthReadSettings).not.toHaveBeenCalled()
     expect(mocks.v2AuthWriteSettingsSet).not.toHaveBeenCalled()
   })
 
   test('設定為空時不對任何幣別動作，但仍會寫回 db', async () => {
-    await main(createEnv({ INPUT_AUTO_RENEW_3: {} }))
+    await main(createController(), createEnv({ INPUT_AUTO_RENEW_3: {} }), createCtx())
     expect(mocks.v2CandlesHist).not.toHaveBeenCalled()
     expect(mocks.v2AuthWriteFundingAuto).not.toHaveBeenCalled()
     expect(mocks.v2AuthWriteSettingsSet).toHaveBeenCalledWith({ [DB_KEY]: { schema: 1, notified: {} } })
   })
 
   test('設定有變更時，關閉舊 auto-renew、取消掛單、再寫入新設定', async () => {
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(mocks.v2AuthWriteFundingAuto).toHaveBeenCalledTimes(2)
     expect(mocks.v2AuthWriteFundingAuto).toHaveBeenNthCalledWith(1, { currency: 'USD', status: 0 })
@@ -292,7 +320,7 @@ describe('main()', () => {
 
   test('原本沒有 auto-renew 時不會多送一次關閉的請求', async () => {
     mocks.v2AuthReadFundingAutoStatus.mockResolvedValue(null)
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(mocks.v2AuthWriteFundingAuto).toHaveBeenCalledTimes(1)
     expect(mocks.v2AuthWriteFundingAuto).toHaveBeenCalledWith(expect.objectContaining({ status: 1 }))
@@ -305,7 +333,7 @@ describe('main()', () => {
       period: TARGET_PERIOD,
       rate: TARGET_RATE,
     })
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(mocks.v2AuthWriteFundingAuto).not.toHaveBeenCalled()
     expect(mocks.v2AuthWriteFundingOfferCancelAll).not.toHaveBeenCalled()
@@ -314,7 +342,7 @@ describe('main()', () => {
 
   test('沒有 K 線時跳過該幣別，不改設定也不回報', async () => {
     mocks.v2CandlesHist.mockResolvedValue([])
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(mocks.v2AuthWriteFundingAuto).not.toHaveBeenCalled()
     expect(telegram.sendMessage).not.toHaveBeenCalled()
@@ -323,7 +351,7 @@ describe('main()', () => {
 
   test('funding 錢包沒有餘額時不回報狀態', async () => {
     mocks.v2AuthReadWallets.mockResolvedValue([{ type: 'funding', currency: 'UST', balance: 1000 }])
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(mocks.v2AuthWriteFundingAuto).toHaveBeenCalled()
     expect(telegram.sendMessage).not.toHaveBeenCalled()
@@ -331,14 +359,14 @@ describe('main()', () => {
 
   test('沒有設定 Telegram 時不影響掛單邏輯', async () => {
     vi.mocked(Telegram.fromEnv).mockReturnValue(null)
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(mocks.v2AuthWriteFundingAuto).toHaveBeenCalledTimes(2)
     expect(mocks.v2AuthWriteSettingsSet).toHaveBeenCalled()
   })
 
   test('第一次回報時發送新訊息，並把 msgId 記錄到 db', async () => {
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(telegram.editMessageText).not.toHaveBeenCalled()
     expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
@@ -358,7 +386,7 @@ describe('main()', () => {
     mocks.v2AuthReadSettings.mockResolvedValue({
       [DB_KEY.slice(4)]: { schema: 1, notified: { USD: { balance: 1000, creditIds: [1], msgId: 999 } } },
     })
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(telegram.sendMessage).not.toHaveBeenCalled()
     expect(telegram.editMessageText).toHaveBeenCalledTimes(1)
@@ -371,7 +399,7 @@ describe('main()', () => {
     { name: '沒有 msgId', notified: { balance: 1000, creditIds: [1] } },
   ])('$name 時改發新訊息', async ({ notified }) => {
     mocks.v2AuthReadSettings.mockResolvedValue({ [DB_KEY.slice(4)]: { schema: 1, notified: { USD: notified } } })
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(telegram.editMessageText).not.toHaveBeenCalled()
     expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
@@ -390,7 +418,7 @@ describe('main()', () => {
       },
     })
 
-    await expect(main(env)).resolves.toBeUndefined()
+    await expect(main(createController(), env, createCtx())).resolves.toBeUndefined()
     expect(mocks.v2AuthWriteFundingAuto).toHaveBeenCalledWith(expect.objectContaining({ currency: 'UST', status: 1 }))
     expect(mocks.v2AuthWriteFundingAuto).not.toHaveBeenCalledWith(expect.objectContaining({ currency: 'USD', status: 1 }))
     expect(mocks.v2AuthWriteSettingsSet).toHaveBeenCalledTimes(1)
@@ -398,7 +426,7 @@ describe('main()', () => {
 
   test('db 壞掉時退回預設值，不會讓整次執行失敗', async () => {
     mocks.v2AuthReadSettings.mockResolvedValue({ [DB_KEY.slice(4)]: 'garbage' })
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
 
     expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
     expect(mocks.v2AuthWriteSettingsSet).toHaveBeenCalledWith({
@@ -407,7 +435,7 @@ describe('main()', () => {
   })
 
   test('讀取 db 用的是與原專案相同的 key', async () => {
-    await main(createEnv())
+    await main(createController(), createEnv(), createCtx())
     expect(mocks.v2AuthReadSettings).toHaveBeenCalledWith([DB_KEY])
   })
 })

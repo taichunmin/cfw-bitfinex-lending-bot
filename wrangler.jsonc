@@ -18,6 +18,10 @@
     ]
   },
   "upload_source_maps": true,
+  /** 讓 src/index.ts 可以用 Text module 匯入本檔，把 cron 排程印在測試頁面上 */
+  "rules": [
+    { "type": "Text", "globs": ["**/*.jsonc"], "fallthrough": true }
+  ],
   /**
    * Smart Placement
    * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

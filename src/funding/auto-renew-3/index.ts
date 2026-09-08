@@ -1,31 +1,27 @@
 /*
-Bitfinex 自動出借（auto-renew）機器人，由 Cloudflare Workers 的 cron trigger 每 3 分鐘執行一次。
+Bitfinex 自動出借（auto-renew）機器人，由 Cloudflare Workers 的 cron trigger 定期執行。
 
 程式決定借出利率的邏輯：
 1. 取得過去一天內的每分鐘 K 線圖
 2. 把成交量加總 totalVolume
 3. 利用二分搜尋法，找出最接近 totalVolume * rank 的利率
 
-使用方式、設定格式與部署步驟見同目錄的 README.md，環境變數的型別見 src/env.d.ts。
+使用方式、設定格式與部署步驟見同目錄的 README.md。
 */
 
 import _ from 'lodash'
 import { Bitfinex, BitfinexSort, PlatformStatus, createBitfinex } from '../../lib/bitfinex'
 import { dayjs } from '../../lib/dayjs'
-import { dateStringify, floatFloor8, floatFormatDecimal, floatFormatPercent, floatIsEqual, parseYaml, progressPercent, rateStringify, sleep } from '../../lib/helper'
-import { createLoggers, ymlStringify } from '../../lib/logger'
+import { dateStringify, floatFloor8, floatFormatDecimal, floatFormatPercent, floatIsEqual, progressPercent, rateStringify, sleep } from '../../lib/helper'
+import { logger as rootLogger, ymlStringify } from '../../lib/logger'
 import { Telegram, tgMdDate, tgMdEscape } from '../../lib/telegram'
 import { z } from '../../lib/zod'
+import { v7 as uuidv7 } from 'uuid'
 
-const loggers = createLoggers('funding-auto-renew-3')
-/** 沿用原專案的腳本名，同時作為 DB_KEY 與 Telegram 訊息標題；改動會讓既有的狀態對不上 */
 const NAME = 'funding-auto-renew-3'
+const logger = rootLogger.child({ namespace: NAME })
 const DB_KEY = `api:taichunmin_${NAME}`
 const RATE_MIN = 0.0001 // APR 3.65%
-
-function ymlDump (key: string, val: any): void {
-  loggers.log({ [key]: val })
-}
 
 function bigintAbs (a: bigint): bigint {
   return a < 0n ? -a : a
@@ -60,54 +56,70 @@ export const ZodDb = z.object({
 
 class SkipError extends Error {}
 
-export async function main (env: Env): Promise<void> {
+export async function main (
+  controller: ScheduledController,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<void> {
+  const logger1 = logger.child({
+    reqId: uuidv7(),
+    scheduledTime: dateStringify(controller.scheduledTime),
+  })
   if ((await Bitfinex.v2PlatformStatus()).status === PlatformStatus.MAINTENANCE) {
-    loggers.error('Bitfinex API is in maintenance mode')
+    logger1.info('Bitfinex API is in maintenance mode')
     return
   }
 
   const bitfinex = createBitfinex(env)
   const telegram = Telegram.fromEnv(env)
-  if (_.isNil(telegram)) loggers.warn('TELEGRAM_TOKEN or TELEGRAM_CHAT_ID is not set, notification is disabled.')
+  if (_.isNil(telegram)) logger1.warn('TELEGRAM_TOKEN or TELEGRAM_CHAT_ID is not set, notification is disabled.')
 
   // 讀取並驗證設定
   const cfg = ZodConfig.parse(env.INPUT_AUTO_RENEW_3)
 
   const db = ZodDb.parse((await bitfinex.v2AuthReadSettings([DB_KEY]))[DB_KEY.slice(4)])
-  ymlDump('db', db)
-
   const wallets = _.mapKeys(await bitfinex.v2AuthReadWallets(), ({ type, currency }) => `${type}:${currency}`)
-  ymlDump('wallets', wallets)
+  logger1.info({ db, wallets }, 'wallets and database loaded.')
 
   for (const [currency, cfg1] of _.entries(cfg)) {
     const trace: Record<string, any> = { currency, cfg1 }
+    const logger2 = logger1.child({ currency })
     try {
-      ymlDump(`cfg.${currency}`, {
+      logger2.info({
         currency,
-        ...cfg1,
-        rateMinStr: rateStringify(cfg1.rateMin),
-        rateMaxStr: rateStringify(cfg1.rateMax),
-      })
+        cfg: {
+          ...cfg1,
+          rateMinStr: rateStringify(cfg1.rateMin),
+          rateMaxStr: rateStringify(cfg1.rateMax),
+        },
+      }, `${currency}: config`)
 
       // 取得該貨幣最新一筆融資統計
       const fundingStats = (await Bitfinex.v2FundingStatsHist({ currency, limit: 1 }))[0]
-      ymlDump('fundingStats', {
+      logger2.info({
         currency,
-        date: dateStringify(fundingStats.mts),
-        frrStr: rateStringify(fundingStats.frr),
-      })
+        fundingStats: {
+          date: dateStringify(fundingStats.mts),
+          frrStr: rateStringify(fundingStats.frr),
+        },
+      }, `${currency}: fundingStats`)
 
       // 修改 autoRenew 的參數
       try {
         // 取得該貨幣自動出借的設定
         const prevAutoRenew = await bitfinex.v2AuthReadFundingAutoStatus({ currency })
-        if (_.isNil(prevAutoRenew)) ymlDump('prevAutoRenew', { status: false })
-        else {
-          ymlDump('prevAutoRenew', {
+        logger2.info(_.isNil(prevAutoRenew) ? {
+          msg: `${currency}: prevAutoRenew is disabled`,
+          currency,
+          prevAutoRenew: { status: false },
+        } : {
+          msg: `${currency}: prevAutoRenew is enabled`,
+          currency,
+          prevAutoRenew: {
             ...prevAutoRenew,
             rateStr: rateStringify(prevAutoRenew.rate),
-          })
-        }
+          },
+        })
 
         // get candles
         const yesterday = dayjs().add(-1, 'day').add(-1, 'second').toDate()
@@ -131,7 +143,13 @@ export async function main (env: Env): Promise<void> {
           period: rateToPeriod(cfg1.period, targetRate),
           rate: targetRate,
         }
-        ymlDump('newAutoRenew', { ...newAutoRenew, rateStr: rateStringify(newAutoRenew.rate) })
+        logger2.info({
+          currency,
+          newAutoRenew: {
+            ...newAutoRenew,
+            rateStr: rateStringify(newAutoRenew.rate)
+          }
+        }, `${currency}: newAutoRenew`)
 
         if (_.isMatch(prevAutoRenew ?? {}, newAutoRenew)) throw new SkipError('Setting of auto-renew no change.')
         else {
@@ -146,7 +164,7 @@ export async function main (env: Env): Promise<void> {
         }
       } catch (err) {
         if (!(err instanceof SkipError)) throw err
-        loggers.log(err.message)
+        logger2.info({ currency }, `${currency}: error`)
       }
 
       const wallet = wallets[`funding:${currency}`] ?? { balance: 0 }
@@ -214,13 +232,11 @@ export async function main (env: Env): Promise<void> {
       }
     } catch (err) {
       _.update(err as Error, `data.main.${currency}`, old => old ?? trace)
-      loggers.error([err])
-    } finally {
-      loggers.log('- - -\n')
+      logger2.error({ err, currency }, 'failed to process currency')
     }
   }
 
-  ymlDump('newDb', db)
+  logger1.info({ db }, 'new database')
   await bitfinex.v2AuthWriteSettingsSet({ [DB_KEY]: ZodDb.parse(db) as any })
 }
 
