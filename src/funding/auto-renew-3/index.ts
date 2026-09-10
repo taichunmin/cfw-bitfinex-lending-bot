@@ -164,7 +164,7 @@ export async function main (
         }
       } catch (err) {
         if (!(err instanceof SkipError)) throw err
-        logger2.info({ currency }, `${currency}: error`)
+        logger2.info({ currency }, `${currency}: skiped, reason = ${err.message}`)
       }
 
       const wallet = wallets[`funding:${currency}`] ?? { balance: 0 }
