@@ -9,6 +9,8 @@
 import JSON5 from 'json5'
 import wranglerJsonc from '../wrangler.jsonc'
 import { main as fundingAutoRenew3 } from './funding/auto-renew-3'
+import { main as fundingExportCredits1 } from './funding/export-credits-1'
+import { main as fundingStatistics1 } from './funding/statistics-1'
 import { logger as rootLogger } from './lib/logger'
 
 const logger = rootLogger.child({ namespace: 'index' })
@@ -35,8 +37,6 @@ export default {
     return new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } })
   },
 
-  // The scheduled handler is invoked at the interval set in our wrangler.jsonc's
-  // [[triggers]] configuration.
   async scheduled (
     controller: ScheduledController,
     env: Env,
@@ -49,6 +49,9 @@ export default {
           break
 
         case '*/30 * * * *':
+          // statistics-1 會讀 export-credits-1 剛寫進 R2 的 CSV，順序不能反
+          await fundingExportCredits1(controller, env, ctx)
+          await fundingStatistics1(controller, env, ctx)
           break
       }
       logger.info({ cron: controller.cron }, 'cron processed')

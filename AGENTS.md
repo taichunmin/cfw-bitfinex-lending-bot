@@ -41,3 +41,9 @@ If the application uses Durable Objects or Workflows, refer to the relevant best
 
 - Durable Objects: https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/
 - Workflows: https://developers.cloudflare.com/workflows/build/rules-of-workflows/
+
+## R2
+
+bucket `taichunmin` 是**通用**的（不只這個專案），所以所有 key 都要帶 `bitfinex-lending-bot/` 前綴。它掛在公開的自訂網域 `r2.taichunmin.idv.tw` 上，讀寫一律經由 `src/lib/r2.ts`。
+
+物件一律 gzip 後才存。注意 R2 的 `get()` 回傳的是**儲存的原始位元組**，不會依 `content-encoding` 自動解壓（跟走 HTTP 的公開網址不同），`r2GetText` 會依 metadata 判斷後自己解。

@@ -16,6 +16,7 @@
     "useUnknownInCatchVariables": false,
     "types": [
       "lodash",
+      "@cloudflare/vitest-plugin/types", // provides `cloudflare:test`, 根目錄的 tsc 也會編譯 test/
       "./worker-configuration.d.ts",
       "node"
     ]
