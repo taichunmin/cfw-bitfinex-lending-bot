@@ -102,7 +102,7 @@ export async function main (
           date: dateStringify(fundingStats.mts),
           frrStr: rateStringify(fundingStats.frr),
         },
-      }, `${currency}: fundingStats`)
+      }, `${currency}: date = ${dateStringify(fundingStats.mts, 'MM/DD HH:mm')}, frr = ${rateStringify(fundingStats.frr)}`)
 
       // 修改 autoRenew 的參數
       try {
@@ -113,7 +113,7 @@ export async function main (
           currency,
           prevAutoRenew: { status: false },
         } : {
-          msg: `${currency}: prevAutoRenew is enabled`,
+          msg: `${currency}: prevAutoRenew, amount = ${prevAutoRenew.amount}, period = ${prevAutoRenew.period}, rate = ${rateStringify(prevAutoRenew.rate)}`,
           currency,
           prevAutoRenew: {
             ...prevAutoRenew,
@@ -149,7 +149,7 @@ export async function main (
             ...newAutoRenew,
             rateStr: rateStringify(newAutoRenew.rate)
           }
-        }, `${currency}: newAutoRenew`)
+        }, `${currency}: newAutoRenew, amount = ${newAutoRenew.amount}, period = ${newAutoRenew.period}, rate = ${rateStringify(newAutoRenew.rate)}`)
 
         if (_.isMatch(prevAutoRenew ?? {}, newAutoRenew)) throw new SkipError('Setting of auto-renew no change.')
         else {
