@@ -24,8 +24,11 @@ export function rateStringify (rate: number): string {
   return `${floatFormatPercent(rate, 6)} (APR: ${floatFormatPercent(rate * 365)})`
 }
 
-export function dateStringify (date?: string | number | Date | dayjs.Dayjs | null): string {
-  return dayjs(date).format('YYYY-MM-DD HH:mm:ssZ')
+export function dateStringify (
+  date?: string | number | Date | dayjs.Dayjs | null,
+  format: string = 'YYYY-MM-DD HH:mm:ssZ',
+): string {
+  return dayjs(date).utcOffset(8).format(format)
 }
 
 export function floatIsEqual (float1: number, float2: number): boolean {
