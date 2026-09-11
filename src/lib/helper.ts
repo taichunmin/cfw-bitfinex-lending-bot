@@ -31,6 +31,11 @@ export function dateStringify (
   return dayjs(date).utcOffset(8).format(format)
 }
 
+/** 轉成 UTC 的 `YYYY-MM-DD HH:mm:ss` */
+export function toUtcDateStr (date: Date): string {
+  return dayjs.utc(date).format('YYYY-MM-DD HH:mm:ss')
+}
+
 export function floatIsEqual (float1: number, float2: number): boolean {
   return Math.abs(float1 - float2) < Number.EPSILON
 }

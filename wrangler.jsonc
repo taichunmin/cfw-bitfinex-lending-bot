@@ -11,10 +11,14 @@
   "observability": {
     "enabled": true
   },
+  /** 全量回補時，預設的 CPU 時間可能不夠 */
+  "limits": {
+    "cpu_ms": 300000
+  },
   "triggers": {
     "crons": [
       "*/5 * * * *",
-      // "*/30 * * * *",
+      "*/30 * * * *",
     ]
   },
   "upload_source_maps": true,
@@ -39,9 +43,21 @@
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
    */
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "taichunmin"
+    }
+  ],
   "vars": {
+    /** 本地由 .env 覆寫成 dev，區分正式與本地的狀態 */
+    "ENV_NAME": "prod",
     "TELEGRAM_CHAT_ID": "-4119951617",
     "BITFINEX_AFF_CODE": "MhocY6Xfp",
+    /** Dashboard 的 JSON 變數只接受 object，所以幣別清單要包一層 */
+    "STATISTICS_FUNDING": {
+      "currencys": ["USD", "UST"]
+    },
     "INPUT_AUTO_RENEW_3": {
       "USD": {
         "amount": 0,

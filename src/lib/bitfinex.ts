@@ -24,4 +24,4 @@ export function createBitfinex (env: BitfinexEnv): Bitfinex {
   })
 }
 
-export { Bitfinex, BitfinexSort, PlatformStatus } from '@taichunmin/bitfinex'
+export { Bitfinex, BitfinexSort, LedgersHistCategory, PlatformStatus } from '@taichunmin/bitfinex'
