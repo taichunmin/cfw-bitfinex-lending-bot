@@ -34,7 +34,7 @@ vi.mock('../../../src/lib/bitfinex', () => ({
   },
   BitfinexSort: { ASC: '+1', DESC: '-1' },
   PlatformStatus: { MAINTENANCE: 0, OPERATIVE: 1 },
-  createBitfinex: vi.fn(() => _.pick(mocks, [
+  getBitfinex: vi.fn(() => _.pick(mocks, [
     'v2AuthReadFundingAutoStatus',
     'v2AuthReadFundingCredits',
     'v2AuthReadFundingOffers',

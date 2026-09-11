@@ -54,13 +54,20 @@ describe('statisticsKey()', () => {
 })
 
 describe('creditYears()', () => {
-  test('365 天視窗最多涵蓋今年與去年兩個年度檔', () => {
-    expect(creditYears(new Date('2026-09-10T00:45:00Z'))).toEqual([2025, 2026])
+  test('涵蓋最早到最新一筆利息的年份，前後各多一年，早期日期的利用率才不會是 0', () => {
+    expect(creditYears([
+      { amount: 1, balance: 1001, mts: new Date('2026-09-09T01:30:00Z') },
+      { amount: 1, balance: 1001, mts: new Date('2024-04-01T01:30:00Z') },
+    ])).toEqual([2023, 2024, 2025, 2026, 2027])
+  })
+
+  test('沒有利息記錄時不用讀', () => {
+    expect(creditYears([])).toEqual([])
   })
 
   test('用 UTC 判斷年份', () => {
     // UTC 還是 2025-12-31，UTC+8 已經跨年
-    expect(creditYears(new Date('2025-12-31T16:30:00Z'))).toEqual([2024, 2025])
+    expect(creditYears([{ amount: 1, balance: 1001, mts: new Date('2025-12-31T16:30:00Z') }])).toEqual([2024, 2025, 2026])
   })
 })
 
@@ -139,8 +146,8 @@ describe('calcStats()', () => {
     )
 
     expect(dateMax).toBe('2026-09-09')
-    // 從 dateMin 補到今天
-    expect(_.map(stats, 'date')).toEqual(['2026-09-09', '2026-09-10'])
+    // 從 dateMin 補到今天，依日期倒序
+    expect(_.map(stats, 'date')).toEqual(['2026-09-10', '2026-09-09'])
     const stat = statsByDate['2026-09-09']
     expect(stat.interest).toBe(1)
     expect(stat.balance).toBe(1001)
