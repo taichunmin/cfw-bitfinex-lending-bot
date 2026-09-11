@@ -10,7 +10,7 @@ Bitfinex 自動出借（auto-renew）機器人，由 Cloudflare Workers 的 cron
 */
 
 import _ from 'lodash'
-import { Bitfinex, BitfinexSort, PlatformStatus, createBitfinex } from '../../lib/bitfinex'
+import { Bitfinex, BitfinexSort, PlatformStatus, getBitfinex } from '../../lib/bitfinex'
 import { dayjs } from '../../lib/dayjs'
 import { dateStringify, floatFloor8, floatFormatDecimal, floatFormatPercent, floatIsEqual, progressPercent, rateStringify, sleep } from '../../lib/helper'
 import { logger as rootLogger, ymlStringify } from '../../lib/logger'
@@ -70,7 +70,7 @@ export async function main (
     return
   }
 
-  const bitfinex = createBitfinex(env)
+  const bitfinex = getBitfinex()
   const telegram = Telegram.fromEnv(env)
   if (_.isNil(telegram)) logger1.warn('TELEGRAM_TOKEN or TELEGRAM_CHAT_ID is not set, notification is disabled.')
 

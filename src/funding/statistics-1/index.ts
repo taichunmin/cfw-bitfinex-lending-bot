@@ -8,7 +8,7 @@
 import _ from 'lodash'
 import type { Logger } from 'pino'
 import { v7 as uuidv7 } from 'uuid'
-import { Bitfinex, LedgersHistCategory, PlatformStatus, createBitfinex } from '../../lib/bitfinex'
+import { Bitfinex, LedgersHistCategory, PlatformStatus, getBitfinex } from '../../lib/bitfinex'
 import { dayjs } from '../../lib/dayjs'
 import { dateStringify, floatFormatDecimal } from '../../lib/helper'
 import { logger as rootLogger } from '../../lib/logger'
@@ -28,10 +28,12 @@ export function statisticsKey (currency: string, ext: 'csv' | 'json'): string {
   return `${R2_PREFIX}/${currency}.${ext}`
 }
 
-/** 最長的統計視窗是 365 天，再舊的 credits 對任何一個 `lentRatio` 都沒有貢獻 */
-export function creditYears (now: Date): number[] {
-  const year = dayjs.utc(now).year()
-  return [year - 1, year]
+/** credits 要涵蓋利息記錄的日期範圍；前後各多讀一年，才涵蓋跨年的出借 */
+export function creditYears (payments: InterestPayment[]): number[] {
+  const mtses = _.map(payments, 'mts')
+  const [mtsMin, mtsMax] = [_.min(mtses), _.max(mtses)]
+  if (_.isNil(mtsMin) || _.isNil(mtsMax)) return []
+  return _.range(dayjs.utc(mtsMin).year() - 1, dayjs.utc(mtsMax).year() + 2)
 }
 
 function tplStat (date: string): DailyStat {
@@ -82,7 +84,7 @@ export function calcLentAmountByDate (
   return results
 }
 
-/** 把利息記錄與每日放出金額算成每日統計。`dateMax` 是最新一筆利息的日期，沒有利息記錄時為 `null` */
+/** 把利息記錄與每日放出金額算成每日統計，`stats` 依日期倒序。`dateMax` 是最新一筆利息的日期，沒有利息記錄時為 `null` */
 export function calcStats (
   payments: InterestPayment[],
   lentAmountByDate: Record<string, number>,
@@ -159,7 +161,7 @@ export function calcStats (
     }
   }
 
-  return { stats: _.values(stats), dateMax, statsByDate: stats }
+  return { stats: _.orderBy(_.values(stats), 'date', 'desc'), dateMax, statsByDate: stats }
 }
 
 /** 組出 Telegram 報告。年化取 `dateMax`，利用率取 `dateMax - 1`，因為 `dateMax` 當天的利用率還不完整 */
@@ -181,12 +183,6 @@ export async function processCurrency (opts: ProcessCurrencyOpts): Promise<void>
   const { activeCredits, bitfinex, bucket, currency, db, logger: logger1, telegram } = opts
   const now = opts.now ?? new Date()
 
-  const creditRows: CreditCsvRow[] = []
-  for (const year of creditYears(now)) {
-    creditRows.push(...await r2GetCsv(bucket, creditsKey(currency, year), ZodCreditCsvRow))
-  }
-  const lentAmountByDate = calcLentAmountByDate(creditRows, activeCredits, now)
-
   const payments = _.filter(
     await bitfinex.v2AuthReadLedgersHist({
       category: LedgersHistCategory.MarginSwapInterestPayment,
@@ -195,6 +191,12 @@ export async function processCurrency (opts: ProcessCurrencyOpts): Promise<void>
     }),
     row => row.wallet === 'funding',
   )
+
+  const creditRows: CreditCsvRow[] = []
+  for (const year of creditYears(payments)) {
+    creditRows.push(...await r2GetCsv(bucket, creditsKey(currency, year), ZodCreditCsvRow))
+  }
+  const lentAmountByDate = calcLentAmountByDate(creditRows, activeCredits, now)
 
   const { stats, dateMax, statsByDate } = calcStats(payments, lentAmountByDate, now)
   if (_.isNil(dateMax)) {
@@ -253,7 +255,7 @@ export async function main (
     return
   }
 
-  const bitfinex = createBitfinex(env)
+  const bitfinex = getBitfinex()
   const telegram = Telegram.fromEnv(env)
   if (_.isNil(telegram)) logger1.warn('TELEGRAM_TOKEN or TELEGRAM_CHAT_ID is not set, notification is disabled.')
 

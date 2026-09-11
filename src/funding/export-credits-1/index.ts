@@ -6,7 +6,7 @@
 
 import _ from 'lodash'
 import { v7 as uuidv7 } from 'uuid'
-import { Bitfinex, PlatformStatus, createBitfinex } from '../../lib/bitfinex'
+import { Bitfinex, PlatformStatus, getBitfinex } from '../../lib/bitfinex'
 import { dayjs } from '../../lib/dayjs'
 import { dateStringify, sleep, toUtcDateStr } from '../../lib/helper'
 import { logger as rootLogger } from '../../lib/logger'
@@ -181,7 +181,7 @@ export async function main (
       return
     }
 
-    const bitfinex = createBitfinex(env)
+    const bitfinex = getBitfinex()
     const key = trace.dbKey = dbKey()
     const db = trace.db = ZodDb.parse((await bitfinex.v2AuthReadSettings([key]))[key.slice(4)])
     logger1.info({ db, dbKey: key }, 'database loaded.')

@@ -18,7 +18,8 @@
   "triggers": {
     "crons": [
       "*/5 * * * *",
-      "*/30 * * * *",
+      /** 跟上一個錯開，避免同時發 request 造成 Bitfinex nonce 太小 */
+      "2,32 * * * *",
     ]
   },
   "upload_source_maps": true,

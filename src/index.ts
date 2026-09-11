@@ -48,7 +48,7 @@ export default {
           await fundingAutoRenew3(controller, env, ctx)
           break
 
-        case '*/30 * * * *':
+        case '2,32 * * * *':
           // statistics-1 會讀 export-credits-1 剛寫進 R2 的 CSV，順序不能反
           await fundingExportCredits1(controller, env, ctx)
           await fundingStatistics1(controller, env, ctx)

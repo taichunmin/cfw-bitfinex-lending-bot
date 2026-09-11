@@ -15,7 +15,7 @@ bitfinex-lending-bot/funding/statistics-1/{currency}.csv
 bitfinex-lending-bot/funding/statistics-1/{currency}.json
 ```
 
-公開網址是 bucket 的自訂網域加上這個 key。每個 UTC 日期一列：
+公開網址是 bucket 的自訂網域加上這個 key。每個 UTC 日期一列，依日期倒序：
 
 | 欄位 | 說明 |
 |------|------|
@@ -68,7 +68,7 @@ trailing 平均固定除以 7 / 30 / 365 而非實際天數，所以序列最前
 
 每日「時間加權放出本金」：把每筆出借的金額依存續時間攤到每個 UTC 日期。
 
-- **已結束**的出借讀自 `export-credits-1` 的今年與去年年度檔，更舊的對 365 日視窗沒有貢獻
+- **已結束**的出借讀自 `export-credits-1` 的年度檔，涵蓋最早到最新一筆利息的年份，前後各多讀一年，才涵蓋跨年的出借
 - **進行中**的出借另外從 `v2AuthReadFundingCredits` 取，算到現在為止，否則執行當下還開著的單會讓昨天嚴重低估
 
 `lentRatio1` 是當日放出金額 ÷ 當日可投入本金；trailing N 日是**資金加權**：`Σ(每日放出金額) / Σ(每日可投入本金)`。

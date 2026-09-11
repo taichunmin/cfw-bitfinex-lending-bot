@@ -10,17 +10,14 @@ import axios from 'axios'
  */
 axios.defaults.fetchOptions = { ...axios.defaults.fetchOptions, cache: 'no-store' }
 
-export interface BitfinexEnv {
-  BITFINEX_API_KEY: string
-  BITFINEX_API_SECRET: string
-  BITFINEX_AFF_CODE?: string
-}
+let bitfinex: Bitfinex | null = null
 
-export function createBitfinex (env: BitfinexEnv): Bitfinex {
-  return new Bitfinex({
-    apiKey: env.BITFINEX_API_KEY,
-    apiSecret: env.BITFINEX_API_SECRET,
-    affCode: env.BITFINEX_AFF_CODE,
+/** 共用同一個 client：nonce 記在 instance 上，多個 instance 交錯發 request 容易出現 nonce 太小的錯誤 */
+export function getBitfinex (): Bitfinex {
+  return bitfinex ??= new Bitfinex({
+    apiKey: process.env.BITFINEX_API_KEY,
+    apiSecret: process.env.BITFINEX_API_SECRET,
+    affCode: process.env.BITFINEX_AFF_CODE,
   })
 }
 
